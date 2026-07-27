@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { resolve } from "node:path";
 import { readTextFile, writeFileAtomically } from "./fs.js";
-import { initHash, computeAllLineHashes } from "./hash.js";
+import { initHash, computeAllLineHashes, computeLineHash } from "./hash.js";
 import { loadConfig } from "./config.js";
 import { formatHashlineRegion } from "./format.js";
 import { parseDiff, resolveBlockEdits } from "./parser.js";
@@ -16,42 +16,34 @@ export function registerEditTool(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "edit",
     label: "edit (hashline)",
-    description: "Edit files using hashline-anchored DSL. Validates line hashes before applying. Does NOT support oldText/newText format.",
+    description: "Edit files using hashline DSL or Pi native replace_text format. Supports both hashline [path#TAG] ops and legacy oldText/newText via op:replace_text.",
     promptSnippet: "edit: Edit files using hashline DSL (SWAP N.=M:, DEL N, INS.PRE N:, INS.POST N:, INS.HEAD:, INS.TAIL:, SWAP.BLK N:, DEL.BLK N, INS.BLK.POST N:)",
     promptGuidelines: [
-      "Use edit with hashline DSL: [path#TAG] header then SWAP/DEL/INS ops",
+      "Use hashline DSL: edits: [{op: 'hashline', diff: '[path#TAG]...'}]",
+      "OR use Pi native format: edits: [{op: 'replace_text', oldText: '...', newText: '...'}]",
       "SWAP N.=M: replaces lines N through M with payload",
       "DEL N.=M deletes lines N through M",
       "INS.PRE N: inserts payload before line N, INS.POST N: inserts after",
       "INS.HEAD: inserts at file start, INS.TAIL: inserts at file end",
       "SWAP.BLK N:/DEL.BLK N/INS.BLK.POST N: operate on brace-delimited blocks",
       "Always use exact LINE#HASH: from read output as anchor reference",
-      "Does NOT support oldText/newText — use hashline DSL format",
     ],
     parameters: Type.Object({
-      path: Type.Optional(Type.String({ description: "File path (for native format)" })),
+      path: Type.Optional(Type.String({ description: "File path" })),
       edits: Type.Optional(Type.Array(Type.Object({
-        diff: Type.Optional(Type.String()),
-      }), { description: "Edits array (native format)" })),
-      diff: Type.Optional(Type.String({ description: "Hashline DSL diff text" })),
+        op: Type.Optional(Type.String({ description: "Operation type: 'replace_text' or 'hashline'" })),
+        oldText: Type.Optional(Type.String({ description: "Exact text to find (replace_text op)" })),
+        newText: Type.Optional(Type.String({ description: "Replacement text (replace_text op)" })),
+        diff: Type.Optional(Type.String({ description: "Hashline DSL (hashline op or legacy format)" })),
+      }), { description: "Edit operations" })),
+      diff: Type.Optional(Type.String({ description: "Hashline DSL (alternative to edits)" })),
     }),
     executionMode: "sequential",
     prepareArguments(args: any) {
-      // Detect and reject legacy oldText/newText before it reaches execute
-      if (args.oldText !== undefined || args.newText !== undefined) {
-        args._legacyDetected = true;
-        return args;
-      }
+      // Normalize old-style { diff } to top-level diff for backward compat
       if (args.edits && Array.isArray(args.edits)) {
         for (const edit of args.edits) {
-          if (edit.oldText !== undefined || edit.newText !== undefined) {
-            args._legacyDetected = true;
-            return args;
-          }
-        }
-        // Normalize edits[].diff to top-level diff
-        for (const edit of args.edits) {
-          if (edit.diff) {
+          if (edit.diff && !edit.op) {
             args.diff = edit.diff;
             break;
           }
@@ -60,26 +52,8 @@ export function registerEditTool(pi: ExtensionAPI): void {
       return args;
     },
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      // Reject legacy oldText/newText with clear guidance
-      if (params._legacyDetected) {
-        return {
-          content: [{
-            type: "text",
-            text: "[E_LEGACY_FORMAT] oldText/newText is not supported. Use hashline DSL:\n" +
-              "  [path/to/file#TAG]\n" +
-              "    SWAP N.=M:\n" +
-              "      replacement content\n" +
-              "    INS.POST N:\n" +
-              "      inserted content\n" +
-              "First read the file with `read` to get LINE#HASH: anchors."
-          }],
-          details: {},
-          isError: true,
-        };
-      }
-
       await initHash();
-      onUpdate?.({ content: [{ type: "text", text: "Parsing DSL..." }], details: {} });
+      onUpdate?.({ content: [{ type: "text", text: "Parsing..." }], details: {} });
       const config = loadConfig();
 
       if (!params.diff && (!params.edits || params.edits.length === 0)) {
@@ -90,16 +64,67 @@ export function registerEditTool(pi: ExtensionAPI): void {
         };
       }
 
-      const diff = params.diff ?? "";
+      // --- Handle replace_text edits ---
+      const replaceTextEdits = (params.edits || []).filter(
+        (e: any) => e.oldText !== undefined || e.op === "replace_text"
+      );
 
+      if (replaceTextEdits.length > 0) {
+        if (config.replaceText === false) {
+          return {
+            content: [{ type: "text", text: "[E_REPLACE_TEXT_DISABLED] Set replaceText: true in hashline.json to enable" }],
+            details: {},
+            isError: true,
+          };
+        }
+        if (!params.path) {
+          return {
+            content: [{ type: "text", text: "[E_NO_PATH] path required for replace_text edits" }],
+            details: {},
+            isError: true,
+          };
+        }
+      }
+
+      let replaceSections = new Map<string, { tag: string; edits: any[]; warnings: string[] }>();
+      if (replaceTextEdits.length > 0) {
+        const absPath = resolve(ctx.cwd, params.path!);
+        let content: string;
+        try {
+          content = readTextFile(absPath);
+        } catch (err: any) {
+          return {
+            content: [{ type: "text", text: `[${absPath}] Error reading file: ${err.message}` }],
+            details: {},
+            isError: true,
+          };
+        }
+        const result = convertReplaceTextEdits(replaceTextEdits, params.path!, content, config);
+        if (result.errors.length > 0) {
+          return {
+            content: [{ type: "text", text: result.errors.join("\n") }],
+            details: {},
+            isError: true,
+          };
+        }
+        replaceSections = result.sections;
+      }
+
+      // --- Handle hashline DSL ---
+      const diff = params.diff ?? "";
+      const dslSections = parseDiff(diff);
       onUpdate?.({ content: [{ type: "text", text: diff ? `Editing: ${diff.slice(0, 60)}...` : "No diff provided" }], details: {} });
 
-      // Parse the DSL
-      const sections = parseDiff(diff);
+      // Merge replace_text sections into dslSections
+      for (const [path, section] of replaceSections) {
+        dslSections.set(path, section);
+      }
+      const sections = dslSections;
+
       onUpdate?.({ content: [{ type: "text", text: `Found ${sections.size} section(s) to apply` }], details: {} });
       if (sections.size === 0) {
         return {
-          content: [{ type: "text", text: "[E_NO_SECTIONS] No valid edit sections found. Use [path#TAG] header." }],
+          content: [{ type: "text", text: "[E_NO_SECTIONS] No valid edit sections found. Use [path#TAG] header or replace_text edits." }],
           details: {},
           isError: true,
         };
@@ -124,7 +149,6 @@ export function registerEditTool(pi: ExtensionAPI): void {
 
           // Validate hashes if tag is provided
           if (section.tag) {
-            // Compute a simple file-level tag from first 4 line hashes
             const tagValid = liveHashes.includes(section.tag);
             const computedTag = section.tag;
 
@@ -132,7 +156,6 @@ export function registerEditTool(pi: ExtensionAPI): void {
               // Try recovery
               const recovered = tryRecover(absPath, text, section.edits, section.tag);
               if (recovered) {
-                // Apply recovered version
                 writeFileAtomically(absPath, recovered.text);
                 const newLines = recovered.text.split("\n");
                 if (newLines.length > 0 && newLines[newLines.length - 1] === "") newLines.pop();
@@ -148,7 +171,6 @@ export function registerEditTool(pi: ExtensionAPI): void {
                 continue;
               }
 
-              // Recovery failed
               const msg = `[E_STALE_ANCHOR] File ${absPath} has changed since read. ` +
                 `Tag ${section.tag} not found in file. ` +
                 `Re-read the file with read to get fresh anchors.`;
@@ -165,24 +187,19 @@ export function registerEditTool(pi: ExtensionAPI): void {
 
           // Check for noop
           if (applyResult.text === text) {
-            // Compute payload key for noop guard
             const payloadKey = section.edits.map(e => `${e.kind}:${e.anchorLine}:${e.payload.join("|")}`).join("||");
             noopGuard.track(absPath, payloadKey);
             results.push(`[${absPath}] No change - content already matches requested edit.`);
             continue;
           }
 
-          // Clear noop guard on success
           noopGuard.clear(absPath);
 
-          // Write atomically
           onUpdate?.({ content: [{ type: "text", text: `Writing ${filePath}...` }], details: {} });
           writeFileAtomically(absPath, applyResult.text);
 
-          // Record new snapshot
           await snapshotStore.record(absPath, applyResult.text);
 
-          // Generate diff display
           const newLines = applyResult.text.split("\n");
           if (newLines.length > 0 && newLines[newLines.length - 1] === "") newLines.pop();
           const newHashes = computeAllLineHashes(newLines, config.hashLength);
@@ -213,7 +230,6 @@ export function registerEditTool(pi: ExtensionAPI): void {
               diffLines.push("+" + `  ${i}#${nh}:` + newLines[idx]);
             }
           }
-
 
           // Context lines (2 before, 2 after)
           const previewStart = Math.max(1, start - 2);
@@ -280,4 +296,107 @@ export function registerEditTool(pi: ExtensionAPI): void {
 
 function isHeadTailOnly(edits: any[]): boolean {
   return edits.every(e => e.kind === "insert_head" || e.kind === "insert_tail");
+}
+
+function convertReplaceTextEdits(
+  edits: any[],
+  relPath: string,
+  content: string,
+  config: any
+): { sections: Map<string, { tag: string; edits: any[]; warnings: string[] }>; errors: string[] } {
+  const sections = new Map<string, { tag: string; edits: any[]; warnings: string[] }>();
+  const errors: string[] = [];
+  const lines = content.split("\n");
+
+  for (const edit of edits) {
+    const oldText = edit.oldText;
+    const newText = edit.newText ?? "";
+
+    // Guard: empty oldText
+    if (!oldText || !oldText.trim()) {
+      errors.push("[E_EMPTY_OLDTEXT] oldText must be non-empty");
+      continue;
+    }
+
+    // Guard: exact match first
+    const idx = content.indexOf(oldText);
+
+    if (idx === -1) {
+      // P1 Fallback: normalized whitespace match
+      const oldLines = oldText.split("\n").map((l: string) => l.trimEnd());
+      const contentLines = content.split("\n");
+      let foundIdx = -1;
+      for (let i = 0; i <= contentLines.length - oldLines.length; i++) {
+        let match = true;
+        for (let j = 0; j < oldLines.length; j++) {
+          if (contentLines[i + j].trimEnd() !== oldLines[j]) { match = false; break; }
+        }
+        if (match) {
+          if (foundIdx !== -1) { foundIdx = -2; break; }
+          foundIdx = i;
+        }
+      }
+      if (foundIdx === -2 || foundIdx === -1) {
+        errors.push(`[E_TEXT_NOT_FOUND] oldText not found in file${foundIdx === -2 ? ' (multiple fuzzy matches)' : ''}. Re-read with \`read\` to get current content.`);
+        continue;
+      }
+
+      const actualOldText = contentLines.slice(foundIdx, foundIdx + oldLines.length).join("\n");
+      const actualIdx = content.indexOf(actualOldText);
+      if (actualIdx === -1) {
+        errors.push("[E_TEXT_NOT_FOUND] Could not locate exact oldText after fuzzy match");
+        continue;
+      }
+
+      const lineBefore = content.slice(0, actualIdx).split("\n").length;
+      const oldTextLinesArr = oldText.split("\n");
+      const startLine = lineBefore + 1;
+      const endLine = startLine + oldTextLinesArr.length - 1;
+      const newLines = newText.split("\n");
+
+      const tag = computeLineHash(lines, startLine - 1, config.hashLength);
+
+      sections.set(relPath, {
+        tag,
+        edits: [{
+          kind: "replace",
+          anchorLine: startLine,
+          endLine,
+          payload: newLines,
+        }],
+        warnings: [],
+      });
+      continue;
+    }
+
+    // Guard P0: duplicate match
+    const lastIdx = content.lastIndexOf(oldText);
+    if (lastIdx !== idx) {
+      errors.push("[E_AMBIGUOUS_MATCH] oldText appears multiple times in file. Use hashline DSL for precise targeting.");
+      continue;
+    }
+
+    // Compute line range from position
+    const lineBefore = content.slice(0, idx).split("\n").length;
+    const oldTextLines = oldText.split("\n");
+    const startLine = lineBefore + 1; // 1-indexed
+    const endLine = startLine + oldTextLines.length - 1;
+    const newLines = newText.split("\n");
+
+    // Synthetic tag for stale-anchor validation (P1)
+    const tag = computeLineHash(lines, startLine - 1, config.hashLength);
+
+    sections.set(relPath, {
+      tag,
+      edits: [{
+        kind: "replace",
+        anchorLine: startLine,
+        endLine,
+        payload: newLines,
+      }],
+      warnings: [],
+    });
+  }
+
+  return { sections, errors };
 }

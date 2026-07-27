@@ -2,24 +2,32 @@
   "name": "pi-the-hashline",
   "version": "0.1.0",
   "description": "Hashline-anchored read/edit tools for Pi coding-agent",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "type": "module",
   "dependencies": {
-    "xxhash-wasm": "^1.1.0",
     "diff": "^7.0.0",
-    "lru-cache": "^11.0.0"
+    "lru-cache": "^11.0.0",
+    "xxhash-wasm": "^1.1.0"
   },
   "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": ">=0.74.0",
     "@earendil-works/pi-tui": "*",
-    "typebox": "*",
-    "@earendil-works/pi-ai": "*"
+    "typebox": "*"
   },
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./src/index.ts"
+    ]
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/djs21/pi-the-hashline.git"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.2",
+    "typescript": "^7.0.2"
   }
 }

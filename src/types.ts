@@ -2,6 +2,7 @@
 export interface HashConfig {
   hashLength: 2 | 3 | 4;
   grep: boolean;
+  replaceText?: boolean;
 }
 
 /** Snapshot entry for recovery */

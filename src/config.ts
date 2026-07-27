@@ -8,6 +8,7 @@ const CONFIG_PATH = join(homedir(), ".pi", "agent", "hashline.json");
 const DEFAULTS: HashConfig = {
   hashLength: 2,
   grep: false,
+  replaceText: true,
 };
 
 let cached: HashConfig | null = null;
@@ -34,6 +35,10 @@ export function loadConfig(): HashConfig {
       
       if (typeof parsed.grep === "boolean") {
         config.grep = parsed.grep;
+      }
+      
+      if (typeof parsed.replaceText === "boolean") {
+        config.replaceText = parsed.replaceText;
       }
     }
   } catch (err) {
