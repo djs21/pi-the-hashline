@@ -348,24 +348,35 @@ function convertReplaceTextEdits(
         continue;
       }
 
+      // already 1-indexed
       const lineBefore = content.slice(0, actualIdx).split("\n").length;
       const oldTextLinesArr = oldText.split("\n");
-      const startLine = lineBefore + 1;
+      const startLine = lineBefore;
       const endLine = startLine + oldTextLinesArr.length - 1;
       const newLines = newText.split("\n");
 
       const tag = computeLineHash(lines, startLine - 1, config.hashLength);
 
-      sections.set(relPath, {
-        tag,
-        edits: [{
+      const existing = sections.get(relPath);
+      if (existing) {
+        existing.edits.push({
           kind: "replace",
           anchorLine: startLine,
           endLine,
           payload: newLines,
-        }],
-        warnings: [],
-      });
+        });
+      } else {
+        sections.set(relPath, {
+          tag,
+          edits: [{
+            kind: "replace",
+            anchorLine: startLine,
+            endLine,
+            payload: newLines,
+          }],
+          warnings: [],
+        });
+      }
       continue;
     }
 
@@ -377,25 +388,35 @@ function convertReplaceTextEdits(
     }
 
     // Compute line range from position
-    const lineBefore = content.slice(0, idx).split("\n").length;
+    const lineBefore = content.slice(0, idx).split("\n").length;  // already 1-indexed
     const oldTextLines = oldText.split("\n");
-    const startLine = lineBefore + 1; // 1-indexed
+    const startLine = lineBefore;
     const endLine = startLine + oldTextLines.length - 1;
     const newLines = newText.split("\n");
 
     // Synthetic tag for stale-anchor validation (P1)
     const tag = computeLineHash(lines, startLine - 1, config.hashLength);
 
-    sections.set(relPath, {
-      tag,
-      edits: [{
+    const existing = sections.get(relPath);
+    if (existing) {
+      existing.edits.push({
         kind: "replace",
         anchorLine: startLine,
         endLine,
         payload: newLines,
-      }],
-      warnings: [],
-    });
+      });
+    } else {
+      sections.set(relPath, {
+        tag,
+        edits: [{
+          kind: "replace",
+          anchorLine: startLine,
+          endLine,
+          payload: newLines,
+        }],
+        warnings: [],
+      });
+    }
   }
 
   return { sections, errors };
