@@ -16,7 +16,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "edit",
     label: "edit (hashline)",
-    description: "Edit files using hashline-anchored DSL or native edit format. Validates line hashes before applying.",
+    description: "Edit files using hashline-anchored DSL. Validates line hashes before applying. Does NOT support oldText/newText format.",
     promptSnippet: "edit: Edit files using hashline DSL (SWAP N.=M:, DEL N, INS.PRE N:, INS.POST N:, INS.HEAD:, INS.TAIL:, SWAP.BLK N:, DEL.BLK N, INS.BLK.POST N:)",
     promptGuidelines: [
       "Use edit with hashline DSL: [path#TAG] header then SWAP/DEL/INS ops",
@@ -26,6 +26,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
       "INS.HEAD: inserts at file start, INS.TAIL: inserts at file end",
       "SWAP.BLK N:/DEL.BLK N/INS.BLK.POST N: operate on brace-delimited blocks",
       "Always use exact LINE#HASH: from read output as anchor reference",
+      "Does NOT support oldText/newText — use hashline DSL format",
     ],
     parameters: Type.Object({
       path: Type.Optional(Type.String({ description: "File path (for native format)" })),
@@ -36,8 +37,19 @@ export function registerEditTool(pi: ExtensionAPI): void {
     }),
     executionMode: "sequential",
     prepareArguments(args: any) {
-      // Normalize native Pi edit format to our DSL format
+      // Detect and reject legacy oldText/newText before it reaches execute
+      if (args.oldText !== undefined || args.newText !== undefined) {
+        args._legacyDetected = true;
+        return args;
+      }
       if (args.edits && Array.isArray(args.edits)) {
+        for (const edit of args.edits) {
+          if (edit.oldText !== undefined || edit.newText !== undefined) {
+            args._legacyDetected = true;
+            return args;
+          }
+        }
+        // Normalize edits[].diff to top-level diff
         for (const edit of args.edits) {
           if (edit.diff) {
             args.diff = edit.diff;
@@ -48,6 +60,24 @@ export function registerEditTool(pi: ExtensionAPI): void {
       return args;
     },
     async execute(toolCallId, params, signal, onUpdate, ctx) {
+      // Reject legacy oldText/newText with clear guidance
+      if (params._legacyDetected) {
+        return {
+          content: [{
+            type: "text",
+            text: "[E_LEGACY_FORMAT] oldText/newText is not supported. Use hashline DSL:\n" +
+              "  [path/to/file#TAG]\n" +
+              "    SWAP N.=M:\n" +
+              "      replacement content\n" +
+              "    INS.POST N:\n" +
+              "      inserted content\n" +
+              "First read the file with `read` to get LINE#HASH: anchors."
+          }],
+          details: {},
+          isError: true,
+        };
+      }
+
       await initHash();
       onUpdate?.({ content: [{ type: "text", text: "Parsing DSL..." }], details: {} });
       const config = loadConfig();
