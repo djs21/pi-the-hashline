@@ -94,9 +94,10 @@ export function registerEditTool(pi: ExtensionAPI): void {
           // Validate hashes if tag is provided
           if (section.tag) {
             // Compute a simple file-level tag from first 4 line hashes
-            const computedTag = liveHashes.slice(0, Math.min(4, liveHashes.length)).join("").slice(0, config.hashLength);
+            const tagValid = liveHashes.includes(section.tag);
+            const computedTag = section.tag;
 
-            if (section.tag !== computedTag && !isHeadTailOnly(section.edits)) {
+            if (!tagValid && !isHeadTailOnly(section.edits)) {
               // Try recovery
               const recovered = tryRecover(absPath, text, section.edits, section.tag);
               if (recovered) {
@@ -118,7 +119,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
 
               // Recovery failed
               const msg = `[E_STALE_ANCHOR] File ${absPath} has changed since read. ` +
-                `Expected tag ${section.tag} but computed ${computedTag}. ` +
+                `Tag ${section.tag} not found in file. ` +
                 `Re-read the file with read to get fresh anchors.`;
               results.push(msg);
               hasError = true;
