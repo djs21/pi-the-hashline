@@ -10,7 +10,7 @@ Hashline-anchored read/edit/grep tools for pi coding-agent. Replaces pi's built-
 ## Local Contracts
 - **Tool registration** — All tools register via `ExtensionAPI` in `index.ts` entry point
 - **read.ts** — LINE#HASH: prefix per line, offset/limit pagination (400 lines/32KB default cap), raw:true mode, 10-line TUI preview with Ctrl+O expand
-- **edit.ts** — Discriminated schema: `op:"replace_text"` (oldText/newText) + `op:"hashline"` ([path#TAG] DSL). convertReplaceTextEdits() bridges Pi native format into hashline sections. Pipeline: parse → validate (stale-anchor check with synthetic tag) → apply → snapshot → diff display. Guards: E_AMBIGUOUS_MATCH (duplicate oldText), E_EMPTY_OLDTEXT, whitespace-normalized fallback, E_REPLACE_TEXT_DISABLED config
+- **edit.ts** — Discriminated schema: `op:"replace_text"` (oldText/newText) + `op:"hashline"` ([path#TAG] DSL). convertReplaceTextEdits() bridges Pi native format into hashline sections. Pipeline: parse → validate (stale-anchor check with synthetic tag) → apply → snapshot → diff display. Guards: E_AMBIGUOUS_MATCH (duplicate oldText), E_EMPTY_OLDTEXT, whitespace-normalized fallback, E_REPLACE_TEXT_DISABLED config. Fixes 2026-07-27: off-by-one startLine + section overwrite.
 - **grep.ts** — ripgrep wrapper with LINE#HASH: output. Auto-downloads rg from GitHub if not on PATH. Lazy init (download on first execute)
 - **parser.ts** — State-machine DSL parser: tokenizer → parseDiff → Section[] with optional BLK resolution
 - **config.ts** — Loads ~/.pi/agent/hashline.json. Keys: hashLength (2-4), grep (bool), replaceText (bool, default true)
