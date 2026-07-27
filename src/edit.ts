@@ -152,19 +152,55 @@ export function registerEditTool(pi: ExtensionAPI): void {
           // Record new snapshot
           await snapshotStore.record(absPath, applyResult.text);
 
-          // Generate preview
+          // Generate diff display
           const newLines = applyResult.text.split("\n");
           if (newLines.length > 0 && newLines[newLines.length - 1] === "") newLines.pop();
           const newHashes = computeAllLineHashes(newLines, config.hashLength);
+          const oldLines = text.split("\n");
+          if (oldLines.length > 0 && oldLines[oldLines.length - 1] === "") oldLines.pop();
+          const oldHashes = computeAllLineHashes(oldLines, config.hashLength);
 
-          // Show affected region plus context
-          const previewStart = Math.max(1, applyResult.firstChangedLine - 2);
-          const previewEnd = Math.min(newLines.length, applyResult.lastChangedLine + 2);
-          const preview = formatHashlineRegion(
+          // Build compact diff
+          const diffLines: string[] = [];
+          const start = applyResult.firstChangedLine;
+          const end = applyResult.lastChangedLine;
+
+          // Show old (removed) lines
+          for (let i = start; i <= end; i++) {
+            const idx = i - 1;
+            if (idx < oldLines.length && oldLines[idx] !== undefined) {
+              if (idx < newLines.length && newLines[idx] === oldLines[idx]) continue; // unchanged
+              const oh = oldHashes[idx] || "??";
+              diffLines.push("-" + `  ${i}#${oh}:` + oldLines[idx]);
+            }
+          }
+          // Show new (added) lines
+          for (let i = start; i <= end; i++) {
+            const idx = i - 1;
+            if (idx < newLines.length && newLines[idx] !== undefined) {
+              if (idx < oldLines.length && oldLines[idx] === newLines[idx]) continue; // unchanged
+              const nh = newHashes[idx] || "??";
+              diffLines.push("+" + `  ${i}#${nh}:` + newLines[idx]);
+            }
+          }
+          // Extra new lines beyond old
+          for (let i = newLines.length - 1; i >= oldLines.length; i--) {
+            const nh = newHashes[i] || "??";
+            diffLines.push("+" + `  ${i+1}#${nh}:` + newLines[i]);
+          }
+
+          // Context lines (2 before, 2 after)
+          const previewStart = Math.max(1, start - 2);
+          const previewEnd = Math.min(newLines.length, end + 2);
+          const context = formatHashlineRegion(
             newLines, newHashes,
             previewStart - 1,
             previewEnd - previewStart + 1
           );
+
+          const allPreview = diffLines.length > 0
+            ? diffLines.join("\n") + "\n" + context.join("\n")
+            : context.join("\n");
 
           const warnings = applyResult.warnings.length > 0
             ? `\nWarnings: ${applyResult.warnings.join("; ")}`
@@ -172,7 +208,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
 
           results.push(
             `[${absPath}] Updated lines ${applyResult.firstChangedLine}-${applyResult.lastChangedLine}.${warnings}\n` +
-            preview.join("\n")
+            allPreview
           );
 
           if (section.warnings.length > 0) {
