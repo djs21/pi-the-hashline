@@ -1,7 +1,7 @@
 import type xxhashWasm from "xxhash-wasm";
 
 const NIBBLE_STR = "ZPMQVRWSNKTXJBYH";
-let h32: ReturnType<Awaited<typeof xxhashWasm>>["h32ToString"] | null = null;
+let h32: Awaited<ReturnType<typeof xxhashWasm>>["h32ToString"] | null = null;
 let initPromise: Promise<void> | null = null;
 
 export async function initHash(): Promise<void> {

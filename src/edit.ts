@@ -46,8 +46,9 @@ export function registerEditTool(pi: ExtensionAPI): void {
       }
       return args;
     },
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       await initHash();
+      onUpdate?.({ content: [{ type: "text", text: "Parsing DSL..." }], details: {} });
       const config = loadConfig();
 
       if (!params.diff && (!params.edits || params.edits.length === 0)) {
@@ -60,8 +61,11 @@ export function registerEditTool(pi: ExtensionAPI): void {
 
       const diff = params.diff ?? "";
 
+      onUpdate?.({ content: [{ type: "text", text: diff ? `Editing: ${diff.slice(0, 60)}...` : "No diff provided" }], details: {} });
+
       // Parse the DSL
       const sections = parseDiff(diff);
+      onUpdate?.({ content: [{ type: "text", text: `Found ${sections.size} section(s) to apply` }], details: {} });
       if (sections.size === 0) {
         return {
           content: [{ type: "text", text: "[E_NO_SECTIONS] No valid edit sections found. Use [path#TAG] header." }],
@@ -122,6 +126,8 @@ export function registerEditTool(pi: ExtensionAPI): void {
             }
           }
 
+          onUpdate?.({ content: [{ type: "text", text: `Applying edits to ${filePath}...` }], details: {} });
+
           // Apply edits
           const applyResult = applyEdits(text, section.edits);
 
@@ -138,6 +144,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
           noopGuard.clear(absPath);
 
           // Write atomically
+          onUpdate?.({ content: [{ type: "text", text: `Writing ${filePath}...` }], details: {} });
           writeFileAtomically(absPath, applyResult.text);
 
           // Record new snapshot
@@ -175,6 +182,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
         }
       }
 
+      onUpdate?.({ content: [{ type: "text", text: `Done. Applied ${results.length} file(s).` }], details: {} });
       return {
         content: [{ type: "text", text: results.join("\n---\n") }],
         details: {},

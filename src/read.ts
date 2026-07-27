@@ -30,10 +30,11 @@ export function registerReadTool(pi: ExtensionAPI): void {
       raw: Type.Optional(Type.Boolean({ description: "If true, output plain content without hashline prefixes" })),
     }),
     executionMode: "sequential",
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       const absPath = resolve(ctx.cwd, params.path);
       const config = loadConfig();
       await initHash();
+      onUpdate?.({ content: [{ type: "text", text: `Reading ${params.path}...` }], details: {} });
 
       const kind = detectFileKind(absPath);
 
