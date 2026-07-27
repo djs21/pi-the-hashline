@@ -9,6 +9,7 @@ import { applyEdits } from "./apply.js";
 import { snapshotStore } from "./snapshot.js";
 import { tryRecover } from "./recovery.js";
 import { noopGuard } from "./noop-guard.js";
+import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export function registerEditTool(pi: ExtensionAPI): void {
@@ -189,6 +190,25 @@ export function registerEditTool(pi: ExtensionAPI): void {
         details: {},
         isError: hasError,
       };
+    },
+    renderCall(args, theme, _context) {
+      let text = theme.fg("toolTitle", theme.bold("edit "));
+      const diff = args.diff || "";
+      const firstLine = diff.split("\n")[0] || "";
+      text += theme.fg("muted", firstLine);
+      return new Text(text, 0, 0);
+    },
+    renderResult(result, _options, theme, _context) {
+      if ((result as any).isError) {
+        const r = result as any;
+        const txt = result.content[0];
+        return new Text(theme.fg("error", txt?.type === "text" ? txt.text : "Error"), 0, 0);
+      }
+      const txt = result.content[0];
+      if (txt?.type === "text" && txt.text.length > 0) {
+        return new Text(txt.text, 0, 0);
+      }
+      return new Text(theme.fg("dim", "No changes"), 0, 0);
     },
   });
 }
