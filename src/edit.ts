@@ -261,16 +261,19 @@ export function registerEditTool(pi: ExtensionAPI): void {
       return new Text(text, 0, 0);
     },
     renderResult(result, _options, theme, _context) {
-      if ((result as any).isError) {
-        const r = result as any;
-        const txt = result.content[0];
-        return new Text(theme.fg("error", txt?.type === "text" ? txt.text : "Error"), 0, 0);
-      }
+      const isError = (result as any).isError;
       const txt = result.content[0];
-      if (txt?.type === "text" && txt.text.length > 0) {
-        return new Text(txt.text, 0, 0);
+      const textContent = txt?.type === "text" ? txt.text : "";
+
+      if (!textContent) {
+        return new Text(theme.fg("dim", "No changes"), 0, 0);
       }
-      return new Text(theme.fg("dim", "No changes"), 0, 0);
+
+      if (isError) {
+        return new Text(theme.fg("error", textContent), 0, 0);
+      }
+
+      return new Text(textContent, 0, 0);
     },
   });
 }

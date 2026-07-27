@@ -7,6 +7,7 @@ import { formatHashlineRegion } from "./format.js";
 import { readTextFile, detectFileKind } from "./fs.js";
 import { snapshotStore } from "./snapshot.js";
 import { noopGuard } from "./noop-guard.js";
+import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const MAX_LINES = 400;
@@ -16,12 +17,13 @@ export function registerReadTool(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "read",
     label: "read (hashline)",
-    description: "Read files with hashline anchors. Each line prefixed LINE#HASH:content. Use raw:true for plain output.",
+    description: "Read files with hashline anchors. Each line prefixed LINE#HASH:content. Use raw:true for plain output. Raw output capped at 400 lines or 32 KiB by default; use offset/limit to continue.",
     promptSnippet: "read: Read files with hashline anchors (LINE#HASH:content). Use raw:true for plain text.",
     promptGuidelines: [
       "Use read to examine files - each line shows as LINE#HASH:content",
       "Include the hash prefix (LINE#HASH:) when referencing lines in edit tool",
-      "Use raw:true to read without hashline formatting (e.g., for binary inspection or config files)",
+      "Use raw:true to read without hashline formatting",
+      "Use offset/limit for large files to keep output focused",
     ],
     parameters: Type.Object({
       path: Type.String({ description: "Path to the file to read" }),
@@ -91,6 +93,35 @@ export function registerReadTool(pi: ExtensionAPI): void {
         content: [{ type: "text", text: output }],
         details: { path: absPath, totalLines: lines.length },
       };
+    },
+    renderCall(args, theme, _context) {
+      let text = theme.fg("toolTitle", theme.bold("read "));
+      const path = args.path || "";
+      text += theme.fg("accent", path);
+      if (args.offset || args.limit) {
+        const start = args.offset ?? 1;
+        const end = args.limit ? start + args.limit - 1 : "";
+        text += theme.fg("warning", `:${start}${end ? `-${end}` : ""}`);
+      }
+      return new Text(text, 0, 0);
+    },
+    renderResult(result, options, theme, _context) {
+      const txt = result.content[0];
+      if (txt?.type !== "text" || !txt.text) {
+        return new Text("", 0, 0);
+      }
+
+      const lines = txt.text.split("\n");
+      const maxPreviewLines = 10;
+
+      if (!options.expanded && lines.length > maxPreviewLines) {
+        const preview = lines.slice(0, maxPreviewLines).join("\n");
+        const remaining = lines.length - maxPreviewLines;
+        const msg = theme.fg("muted", `\n... (${remaining} more lines, Ctrl+O to expand)`);
+        return new Text(preview + msg, 0, 0);
+      }
+
+      return new Text(txt.text, 0, 0);
     },
   });
 }
