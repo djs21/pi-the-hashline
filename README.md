@@ -7,12 +7,14 @@ Overrides Pi's built-in `read` and `edit` tools with hashline-anchored replaceme
 ## Features
 
 - **Hashline read** — `LINE#HASH:content` per line with context-sensitive xxHash32 hashes
+- **TUI preview** — read shows 10-line preview (Ctrl+O expands)
 - **Hash-validated edit** — SWAP/DEL/INS/INS.BLK ops verified against live hashes
+- **Colored blocks** — successful edit in green, failed edit in red
 - **Stale-anchor recovery** — 3-way merge against historical snapshots when file changed
 - **Brace-block resolution** — `.BLK` ops for TS/JS/Java/C/C++/Go/Rust/C# via char-level brace-matching
 - **Self-healing** — Trailing closer dedup, landing-shift for nested inserts
 - **Noop-loop guard** — 3 consecutive identical no-ops → hard fail
-- **Optional grep** — ripgrep wrapper with hashline output
+- **grep** — ripgrep-backed search with hashline output, auto-downloads if not found
 - **Configurable** — `~/.pi/agent/hashline.json` for hash length (2-4) and grep toggle
 
 ## Installation
@@ -56,17 +58,27 @@ npm install
 
 Create `~/.pi/agent/hashline.json`:
 
+Minimal (grep disabled by default):
+
 ```json
 {
-  "hashLength": 2,
-  "grep": false
+  "hashLength": 2
+}
+```
+
+Full:
+
+```json
+{
+  "hashLength": 3,
+  "grep": true
 }
 ```
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `hashLength` | int | 2 | Hash characters per line (2-4) |
-| `grep` | bool | false | Enable grep tool (needs `rg` on PATH) |
+| `grep` | bool | false | Enable grep tool. Auto-downloads ripgrep from GitHub if not on PATH. |
 
 ## Usage
 
@@ -86,6 +98,8 @@ Output:
 Use `raw: true` for plain output.
 
 ### Edit DSL
+
+> **Note:** Only hashline DSL (SWAP/DEL/INS/INS.BLK etc.) is supported. `oldText`/`newText` format from Pi's built-in edit is **not** available.
 
 ```
 [path/to/file.ts#JB]
