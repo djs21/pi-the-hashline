@@ -183,11 +183,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
               diffLines.push("+" + `  ${i}#${nh}:` + newLines[idx]);
             }
           }
-          // Extra new lines beyond old
-          for (let i = newLines.length - 1; i >= oldLines.length; i--) {
-            const nh = newHashes[i] || "??";
-            diffLines.push("+" + `  ${i+1}#${nh}:` + newLines[i]);
-          }
+
 
           // Context lines (2 before, 2 after)
           const previewStart = Math.max(1, start - 2);

@@ -128,7 +128,9 @@ export function applyEdits(text: string, edits: EditOp[]): ApplyResult {
 
   // Apply tail inserts
   if (tailInserts.length > 0) {
+    const beforeLen = lines.length;
     lines.push(...tailInserts);
+    firstChanged = Math.min(firstChanged, beforeLen + 1);
     lastChanged = lines.length;
   }
 
