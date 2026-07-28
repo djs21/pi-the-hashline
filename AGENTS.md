@@ -83,6 +83,7 @@ When the user requests a durable behavior change, record it here or in the relev
 - **2026-07-27** — grep tool auto-downloads ripgrep from GitHub if not on PATH
 - **2026-07-27** — TUI preview: read shows 10-line preview (Ctrl+O expand), edit shows colored diff blocks
 - **2026-07-28** — EDIT tool renderResult: colorized diff per prefix (toolDiffAdded/Removed/Context), 10-line preview + Ctrl+O expand, details metadata, error/warning/noop theme colors. Pure display change; no edit logic.
+- **2026-07-28** — EDIT tool background box: set `renderShell: "default"` so framework wraps output in Box with green/red/yellow background (matches READ behavior).
 - **2026-07-27** — Hashline edit tool uses LINE#HASH: anchors with NIBBLE_STR alphabet, context-based xxHash32
 - **2026-07-27** — Bug fix: `convertReplaceTextEdits()` off-by-one `startLine` (removed `+ 1`). `.split('\n').length` already returns 1-indexed line.
 - **2026-07-27** — Bug fix: `convertReplaceTextEdits()` section overwrite when multiple edits target same file. Merge into existing Map entry instead of overwrite.
