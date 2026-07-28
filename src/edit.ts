@@ -38,6 +38,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
       }), { description: "Edit operations" })),
       diff: Type.Optional(Type.String({ description: "Hashline DSL (alternative to edits)" })),
     }),
+    renderShell: "default",
     executionMode: "sequential",
     prepareArguments(args: any) {
       // Normalize old-style { diff } to top-level diff for backward compat
