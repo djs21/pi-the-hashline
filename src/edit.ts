@@ -94,11 +94,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
         try {
           content = readTextFile(absPath);
         } catch (err: any) {
-          return {
-            content: [{ type: "text", text: `[${absPath}] Error reading file: ${err.message}` }],
-            details: {},
-            isError: true,
-          };
+          throw new Error(`[${absPath}] Error reading file: ${err.message}`);
         }
         const result = convertReplaceTextEdits(replaceTextEdits, params.path!, content, config);
         if (result.errors.length > 0) {
@@ -264,6 +260,9 @@ export function registerEditTool(pi: ExtensionAPI): void {
       }
 
       onUpdate?.({ content: [{ type: "text", text: `Done. Applied ${results.length} file(s).` }], details: {} });
+      if (hasError) {
+        throw new Error(results.join("\n---\n"));
+      }
       return {
         content: [{ type: "text", text: results.join("\n---\n") }],
         details: {
@@ -273,7 +272,6 @@ export function registerEditTool(pi: ExtensionAPI): void {
             r.includes('Updated lines') || r.includes('Recovered')
           ).length,
         },
-        isError: hasError,
       };
     },
     renderCall(args, theme, _context) {
