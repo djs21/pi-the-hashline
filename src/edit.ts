@@ -400,7 +400,24 @@ function convertReplaceTextEdits(
     const oldTextLines = oldText.split("\n");
     const startLine = lineBefore;
     const endLine = startLine + oldTextLines.length - 1;
-    const newLines = newText.split("\n");
+    let newLines = newText.split("\n");
+
+    // Fix: when oldText is a substring within a single line, preserve surrounding text
+    // instead of replacing the entire line
+    if (startLine === endLine) {
+      const originalLine = lines[startLine - 1];
+      const pos = originalLine.indexOf(oldText);
+      if (pos !== -1) {
+        const linePrefix = originalLine.slice(0, pos);
+        const lineSuffix = originalLine.slice(pos + oldText.length);
+        newLines = newLines.map((l, i) => {
+          if (i === 0 && i === newLines.length - 1) return linePrefix + l + lineSuffix;
+          if (i === 0) return linePrefix + l;
+          if (i === newLines.length - 1) return l + lineSuffix;
+          return l;
+        });
+      }
+    }
 
     // Synthetic tag for stale-anchor validation (P1)
     const tag = computeLineHash(lines, startLine - 1, config.hashLength);
@@ -424,7 +441,6 @@ function convertReplaceTextEdits(
         }],
         warnings: [],
       });
-    }
   }
 
   return { sections, errors };
