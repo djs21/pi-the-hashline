@@ -58,11 +58,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
       const config = loadConfig();
 
       if (!params.diff && (!params.edits || params.edits.length === 0)) {
-        return {
-          content: [{ type: "text", text: "[E_NO_DIFF] No diff or edits provided." }],
-          details: {},
-          isError: true,
-        };
+        throw new Error("[E_NO_DIFF] No diff or edits provided.");
       }
 
       // --- Handle replace_text edits ---
@@ -72,18 +68,10 @@ export function registerEditTool(pi: ExtensionAPI): void {
 
       if (replaceTextEdits.length > 0) {
         if (config.replaceText === false) {
-          return {
-            content: [{ type: "text", text: "[E_REPLACE_TEXT_DISABLED] Set replaceText: true in hashline.json to enable" }],
-            details: {},
-            isError: true,
-          };
+          throw new Error("[E_REPLACE_TEXT_DISABLED] Set replaceText: true in hashline.json to enable");
         }
         if (!params.path) {
-          return {
-            content: [{ type: "text", text: "[E_NO_PATH] path required for replace_text edits" }],
-            details: {},
-            isError: true,
-          };
+          throw new Error("[E_NO_PATH] path required for replace_text edits");
         }
       }
 
@@ -98,11 +86,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
         }
         const result = convertReplaceTextEdits(replaceTextEdits, params.path!, content, config);
         if (result.errors.length > 0) {
-          return {
-            content: [{ type: "text", text: result.errors.join("\n") }],
-            details: {},
-            isError: true,
-          };
+          throw new Error(result.errors.join("\n"));
         }
         replaceSections = result.sections;
       }
@@ -120,11 +104,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
 
       onUpdate?.({ content: [{ type: "text", text: `Found ${sections.size} section(s) to apply` }], details: {} });
       if (sections.size === 0) {
-        return {
-          content: [{ type: "text", text: "[E_NO_SECTIONS] No valid edit sections found. Use [path#TAG] header or replace_text edits." }],
-          details: {},
-          isError: true,
-        };
+        throw new Error("[E_NO_SECTIONS] No valid edit sections found. Use [path#TAG] header or replace_text edits.");
       }
 
       const results: string[] = [];
