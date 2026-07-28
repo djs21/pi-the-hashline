@@ -265,7 +265,13 @@ export function registerEditTool(pi: ExtensionAPI): void {
       onUpdate?.({ content: [{ type: "text", text: `Done. Applied ${results.length} file(s).` }], details: {} });
       return {
         content: [{ type: "text", text: results.join("\n---\n") }],
-        details: {},
+        details: {
+          fileCount: sections.size,
+          paths: [...sections.keys()].map(p => resolve(ctx.cwd, p)),
+          changedFileCount: results.filter(r =>
+            r.includes('Updated lines') || r.includes('Recovered')
+          ).length,
+        },
         isError: hasError,
       };
     },
@@ -276,8 +282,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
       text += theme.fg("muted", firstLine);
       return new Text(text, 0, 0);
     },
-    renderResult(result, _options, theme, _context) {
-      const isError = (result as any).isError;
+    renderResult(result, options, theme, _context) {
       const txt = result.content[0];
       const textContent = txt?.type === "text" ? txt.text : "";
 
@@ -285,13 +290,37 @@ export function registerEditTool(pi: ExtensionAPI): void {
         return new Text(theme.fg("dim", "No changes"), 0, 0);
       }
 
-      if (isError) {
-        return new Text(theme.fg("error", textContent), 0, 0);
+      const lines = textContent.split("\n");
+      const maxPreviewLines = 10;
+
+      let displayLines = lines;
+      let remaining = 0;
+      if (!options.expanded && lines.length > maxPreviewLines) {
+        displayLines = lines.slice(0, maxPreviewLines);
+        remaining = lines.length - maxPreviewLines;
       }
 
-      return new Text(textContent, 0, 0);
+      const colored = displayLines.map(line => colorEditOutputLine(line, theme));
+
+      if (remaining > 0) {
+        colored.push(theme.fg("muted", `... (${remaining} more lines, Ctrl+O to expand)`));
+      }
+
+      return new Text(colored.join("\n"), 0, 0);
     },
   });
+}
+
+function colorEditOutputLine(line: string, theme: any): string {
+  if (line.startsWith("- ")) return theme.fg("toolDiffRemoved", line);
+  if (line.startsWith("+ ")) return theme.fg("toolDiffAdded", line);
+  if (/^\s+\d+#[A-Z]+:/.test(line)) return theme.fg("toolDiffContext", line);
+  if (line.startsWith("[E_")) return theme.fg("error", line);
+  if (line.startsWith("[") && line.includes("Error:")) return theme.fg("error", line);
+  if (line.includes("Warnings:") || line.includes("DSL warnings:")) return theme.fg("warning", line);
+  if (line.includes("No change")) return theme.fg("dim", line);
+  if (line === "---") return theme.fg("dim", line);
+  return line;
 }
 
 function isHeadTailOnly(edits: any[]): boolean {
