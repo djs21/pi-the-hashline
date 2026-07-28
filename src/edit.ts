@@ -441,6 +441,7 @@ function convertReplaceTextEdits(
         }],
         warnings: [],
       });
+    }
   }
 
   return { sections, errors };
