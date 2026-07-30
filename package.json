@@ -8,8 +8,7 @@
   "type": "module",
   "dependencies": {
     "diff": "^7.0.0",
-    "lru-cache": "^11.0.0",
-    "xxhash-wasm": "^1.1.0"
+    "lru-cache": "^11.0.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",

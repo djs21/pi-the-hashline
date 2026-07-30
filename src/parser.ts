@@ -2,6 +2,32 @@ import { tokenize, type TokenType } from "./tokenizer.js";
 import type { EditOp } from "./types.js";
 import { findBraceBlock } from "./block-resolver.js";
 
+// ─── Display prefix rejection ───────────────────────────────────────────
+// NIBBLE_STR alphabet: ZPMQVRWSNKTXJBYH (16 chars)
+// Format: LINE#HASH:content  or  + LINE#HASH:content  or  - LINENO    content
+
+const NIBBLE_STR = "ZPMQVRWSNKTXJBYH";
+
+export function assertNoDisplayPrefixes(lines: string[]): void {
+  for (const line of lines) {
+    if (!line.length) continue;
+    if (
+      // "  LINE#HASH:content" — hashline read/grep output
+      new RegExp(`^\\s*(\\d+\\s*)?#[${NIBBLE_STR}]{2,4}:`).test(line) ||
+      // "+ LINE#HASH:content" — diff addition
+      new RegExp(`^\\+\\s*(\\d+\\s*)?#[${NIBBLE_STR}]{2,4}:`).test(line) ||
+      // "- LINE    content" — diff removal (hashline diff uses 4-space indent)
+      /^-\s*\d+\s{4}/.test(line)
+    ) {
+      throw new Error(
+        `[E_INVALID_PATCH] Edit payload must contain literal file content, ` +
+        `not rendered hashline prefix or diff markers. ` +
+        `Offending line: ${JSON.stringify(line)}`
+      );
+    }
+  }
+}
+
 export interface ParseResult {
   edits: ParsedEdit[];
   warnings: string[];
@@ -64,6 +90,7 @@ export function parseDiff(diff: string): Map<string, { tag: string; edits: Parse
   function flushPending() {
     if (pendingOp && pendingOp.kind && currentSection) {
       pendingOp.payload = [...payload];
+      assertNoDisplayPrefixes(payload);
       currentSection.edits.push(pendingOp as ParsedEdit);
     }
     pendingOp = null;
