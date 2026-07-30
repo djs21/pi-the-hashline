@@ -1,6 +1,6 @@
 import { LRUCache } from "lru-cache";
 import { statSync } from "node:fs";
-import { initHash, computeLineHash } from "./hash.js";
+import { computeLineHash } from "./hash.js";
 import { loadConfig } from "./config.js";
 
 interface StoredSnapshot {
@@ -55,9 +55,6 @@ class SnapshotStore {
 
   /** Record a new snapshot for a path. Returns file-level hash. */
   async record(path: string, text: string, seenLines?: Set<number>): Promise<string> {
-    await initHash();
-    const config = loadConfig();
-
     const stat = statSync(path);
     const lines = text.split("\n");
     const lineHashes = lines.map((_, i) => computeLineHash(lines, i, config.hashLength));

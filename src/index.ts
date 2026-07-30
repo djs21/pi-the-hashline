@@ -2,13 +2,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerReadTool } from "./read.js";
 import { registerEditTool } from "./edit.js";
 import { registerGrepTool } from "./grep.js";
-import { initHash } from "./hash.js";
 
 export default async function (pi: ExtensionAPI): Promise<void> {
-  // Initialize hash engine
-  await initHash();
-
-  // Register tools
   registerReadTool(pi);
   registerEditTool(pi);
   registerGrepTool(pi);
