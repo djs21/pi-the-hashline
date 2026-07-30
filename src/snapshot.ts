@@ -57,7 +57,8 @@ class SnapshotStore {
   async record(path: string, text: string, seenLines?: Set<number>): Promise<string> {
     const stat = statSync(path);
     const lines = text.split("\n");
-    const lineHashes = lines.map((_, i) => computeLineHash(lines, i, config.hashLength));
+    const { hashLength } = loadConfig();
+    const lineHashes = lines.map((_, i) => computeLineHash(lines, i, hashLength));
     const fileHash = lineHashes.join("|"); // composite hash
 
     const snap: StoredSnapshot = {
