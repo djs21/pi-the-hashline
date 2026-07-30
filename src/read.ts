@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { initHash, computeAllLineHashes } from "./hash.js";
+import { computeAllLineHashes } from "./hash.js";
 import { loadConfig } from "./config.js";
 import { formatHashlineRegion } from "./format.js";
 import { readTextFile, detectFileKind } from "./fs.js";
@@ -35,7 +35,6 @@ export function registerReadTool(pi: ExtensionAPI): void {
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       const absPath = resolve(ctx.cwd, params.path);
       const config = loadConfig();
-      await initHash();
       onUpdate?.({ content: [{ type: "text", text: `Reading ${params.path}...` }], details: {} });
 
       const kind = detectFileKind(absPath);
