@@ -1,10 +1,10 @@
 import { Type } from "typebox";
 import { resolve } from "node:path";
 import { readTextFile, writeFileAtomically } from "./fs.js";
-import { initHash, computeAllLineHashes, computeLineHash } from "./hash.js";
+import { computeAllLineHashes, computeLineHash } from "./hash.js";
 import { loadConfig } from "./config.js";
 import { formatHashlineRegion } from "./format.js";
-import { parseDiff, resolveBlockEdits } from "./parser.js";
+import { parseDiff, resolveBlockEdits, assertNoDisplayPrefixes } from "./parser.js";
 import { applyEdits } from "./apply.js";
 import { snapshotStore } from "./snapshot.js";
 import { tryRecover } from "./recovery.js";
@@ -53,7 +53,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
       return args;
     },
     async execute(toolCallId, params, signal, onUpdate, ctx) {
-      await initHash();
+
       onUpdate?.({ content: [{ type: "text", text: "Parsing..." }], details: {} });
       const config = loadConfig();
 
@@ -171,6 +171,15 @@ export function registerEditTool(pi: ExtensionAPI): void {
           }
 
           noopGuard.clear(absPath);
+
+          // Full-file deletion guardrail
+          if (applyResult.text === "" && lines.length > 50) {
+            throw new Error(
+              `[E_WOULD_EMPTY] Edit would leave file empty (${lines.length} lines). ` +
+              `Aborting — files with >50 lines are not expected to be fully deleted. ` +
+              `Use \`read\` and explicitly select all lines if intentional.`
+            );
+          }
 
           onUpdate?.({ content: [{ type: "text", text: `Writing ${filePath}...` }], details: {} });
           writeFileAtomically(absPath, applyResult.text);
@@ -362,6 +371,7 @@ function convertReplaceTextEdits(
       const startLine = lineBefore;
       const endLine = startLine + oldTextLinesArr.length - 1;
       const newLines = newText.split("\n");
+      assertNoDisplayPrefixes(newLines);
 
       const tag = computeLineHash(lines, startLine - 1, config.hashLength);
 
@@ -401,6 +411,7 @@ function convertReplaceTextEdits(
     const startLine = lineBefore;
     const endLine = startLine + oldTextLines.length - 1;
     let newLines = newText.split("\n");
+    assertNoDisplayPrefixes(newLines);
 
     // Fix: when oldText is a substring within a single line, preserve surrounding text
     // instead of replacing the entire line
