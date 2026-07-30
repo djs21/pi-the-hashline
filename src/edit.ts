@@ -173,7 +173,7 @@ export function registerEditTool(pi: ExtensionAPI): void {
           noopGuard.clear(absPath);
 
           // Full-file deletion guardrail
-          if (applyResult.text === "" && lines.length > 50) {
+          if ((applyResult.text === "" || applyResult.text === "\n") && lines.length > 50) {
             throw new Error(
               `[E_WOULD_EMPTY] Edit would leave file empty (${lines.length} lines). ` +
               `Aborting — files with >50 lines are not expected to be fully deleted. ` +
