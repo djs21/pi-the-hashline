@@ -3,7 +3,7 @@ import { resolve, join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { execSync, spawnSync } from "node:child_process";
 import { mkdirSync, chmodSync } from "node:fs";
-import { initHash, computeLineHash } from "./hash.js";
+import { computeLineHash } from "./hash.js";
 import { loadConfig } from "./config.js";
 import { formatHashline } from "./format.js";
 import { readTextFile } from "./fs.js";
@@ -83,7 +83,7 @@ export function registerGrepTool(pi: ExtensionAPI): void {
     }),
     executionMode: "sequential",
     async execute(_toolCallId, params, _signal, onUpdate, _ctx) {
-      await initHash();
+
       const config = loadConfig();
       const rgPath = await getRgPath();
 
