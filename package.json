@@ -25,8 +25,12 @@
     "type": "git",
     "url": "git+https://github.com/djs21/pi-the-hashline.git"
   },
+  "scripts": {
+    "test": "node --import tsx --test tests/**/*.test.ts"
+  },
   "devDependencies": {
     "@types/diff": "^7.0.2",
+    "tsx": "^4.23.11",
     "typescript": "^7.0.2"
   }
 }
