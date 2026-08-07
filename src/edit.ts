@@ -13,21 +13,27 @@ import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export function registerEditTool(pi: ExtensionAPI): void {
+  const config = loadConfig();
+  const promptGuidelines = [
+    "Use hashline DSL: edits: [{op: 'hashline', diff: '[path#TAG]...'}]",
+    "OR use Pi native format: edits: [{op: 'replace_text', oldText: '...', newText: '...'}]",
+    "SWAP N.=M: replaces lines N through M with payload",
+    "DEL N.=M deletes lines N through M",
+    "INS.PRE N: inserts payload before line N, INS.POST N: inserts after",
+    "INS.HEAD: inserts at file start, INS.TAIL: inserts at file end",
+    "SWAP.BLK N:/DEL.BLK N/INS.BLK.POST N: operate on brace-delimited blocks",
+    "Always use exact LINE#HASH: from read output as anchor reference",
+  ];
+  if (config.grep) {
+    promptGuidelines.push("Grep output (LINE#HASH:content) provides valid anchors — use them directly without re-reading");
+  }
+
   pi.registerTool({
     name: "edit",
     label: "edit (hashline)",
     description: "Edit files using hashline DSL or Pi native replace_text format. Supports both hashline [path#TAG] ops and legacy oldText/newText via op:replace_text.",
     promptSnippet: "edit: Edit files using hashline DSL (SWAP N.=M:, DEL N, INS.PRE N:, INS.POST N:, INS.HEAD:, INS.TAIL:, SWAP.BLK N:, DEL.BLK N, INS.BLK.POST N:)",
-    promptGuidelines: [
-      "Use hashline DSL: edits: [{op: 'hashline', diff: '[path#TAG]...'}]",
-      "OR use Pi native format: edits: [{op: 'replace_text', oldText: '...', newText: '...'}]",
-      "SWAP N.=M: replaces lines N through M with payload",
-      "DEL N.=M deletes lines N through M",
-      "INS.PRE N: inserts payload before line N, INS.POST N: inserts after",
-      "INS.HEAD: inserts at file start, INS.TAIL: inserts at file end",
-      "SWAP.BLK N:/DEL.BLK N/INS.BLK.POST N: operate on brace-delimited blocks",
-      "Always use exact LINE#HASH: from read output as anchor reference",
-    ],
+    promptGuidelines,
     parameters: Type.Object({
       path: Type.Optional(Type.String({ description: "File path" })),
       edits: Type.Optional(Type.Array(Type.Object({
@@ -421,7 +427,7 @@ function convertReplaceTextEdits(
       if (pos !== -1) {
         const linePrefix = originalLine.slice(0, pos);
         const lineSuffix = originalLine.slice(pos + oldText.length);
-        newLines = newLines.map((l, i) => {
+        newLines = newLines.map((l: string, i: number) => {
           if (i === 0 && i === newLines.length - 1) return linePrefix + l + lineSuffix;
           if (i === 0) return linePrefix + l;
           if (i === newLines.length - 1) return l + lineSuffix;
