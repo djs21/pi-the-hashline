@@ -9,12 +9,22 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 describe("grep tool tests", () => {
   const fixtureDir = join(process.cwd(), "tests", "fixtures");
   const configPath = join(homedir(), ".pi", "agent", "hashline.json");
-  let originalConfig: string | null = null;
+  const backupPath = configPath + ".bak";
+  let hasOriginal = false;
 
   before(() => {
+    // Restore backup if it exists from a crashed run
+    if (existsSync(backupPath)) {
+      try {
+        writeFileSync(configPath, readFileSync(backupPath));
+        rmSync(backupPath, { force: true });
+      } catch {}
+    }
+
     // Save original config
     if (existsSync(configPath)) {
-      originalConfig = readFileSync(configPath, "utf-8");
+      writeFileSync(backupPath, readFileSync(configPath));
+      hasOriginal = true;
     }
     // Write test config ensuring grep is enabled
     mkdirSync(dirname(configPath), { recursive: true });
@@ -35,11 +45,15 @@ describe("grep tool tests", () => {
 
   after(() => {
     // Restore original config
-    if (originalConfig !== null) {
-      writeFileSync(configPath, originalConfig);
-    } else {
-      try {
+    try {
+      if (hasOriginal && existsSync(backupPath)) {
+        writeFileSync(configPath, readFileSync(backupPath));
+      } else if (!hasOriginal) {
         rmSync(configPath, { force: true });
+      }
+    } catch {} finally {
+      try {
+        rmSync(backupPath, { force: true });
       } catch {}
     }
     // Remove fixtures
@@ -127,6 +141,17 @@ describe("grep tool tests", () => {
     const text = res.content[0].text;
     const lines = text.split("\n").filter(l => l.includes("#"));
     assert.strictEqual(lines.length, 1);
+  });
+
+  test("limit enforcement global counter kill path", async () => {
+    // Searching "." (both file1.txt and file2.txt) for pattern "a".
+    // file1.txt has 2 matches for "a", file2.txt has 2 matches for "a".
+    // With limit: 2, ripgrep's --max-count 2 allows up to 4 matches total,
+    // but the global counter kill path will terminate ripgrep after 2 matches.
+    const res = await executeGrep({ pattern: "a", limit: 2, path: "." });
+    const text = res.content[0].text;
+    const lines = text.split("\n").filter(l => l.includes("#"));
+    assert.ok(lines.length <= 2, `Expected <= 2 matches, got ${lines.length}. Output:\n${text}`);
   });
 
   test("invalid UTF-8 bytes handling", async () => {
