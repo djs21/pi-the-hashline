@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { resolve, join, dirname } from "node:path";
+import { resolve as pathResolve, join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { execSync, spawnSync } from "node:child_process";
 import { mkdirSync, chmodSync } from "node:fs";
@@ -100,17 +100,9 @@ export function registerGrepTool(pi: ExtensionAPI): void {
     executionMode: "sequential",
     async execute(_toolCallId, params, _signal, onUpdate, _ctx) {
       const config = loadConfig();
-      let rgPath: string;
-      try {
-        rgPath = await getRgPath();
-      } catch (err: any) {
-        return {
-          content: [{ type: "text", text: `Error finding/downloading ripgrep: ${err.message}` }],
-          details: { error: err.message },
-        };
-      }
+      const rgPath = await getRgPath();
 
-      const searchPath = params.path ? resolve(_ctx.cwd, params.path) : _ctx.cwd;
+      const searchPath = params.path ? pathResolve(_ctx.cwd, params.path) : _ctx.cwd;
       const limit = params.limit ?? 50;
       const context = params.context ?? 0;
 
@@ -128,16 +120,20 @@ export function registerGrepTool(pi: ExtensionAPI): void {
       args.push(params.pattern);
       args.push(searchPath);
 
-      try {
-        onUpdate?.({ content: [{ type: "text", text: `grep: ${params.pattern}` }], details: {} });
-      } catch {}
+      onUpdate?.({ content: [{ type: "text", text: `grep: ${params.pattern}` }], details: {} });
 
-      return new Promise<{ content: { type: "text"; text: string }[]; details: any }>((resolvePromise) => {
-        let resolved = false;
+      return new Promise<{ content: { type: "text"; text: string }[]; details: any }>((resolvePromise, rejectPromise) => {
+        let settled = false;
         const resolve = (val: any) => {
-          if (!resolved) {
-            resolved = true;
+          if (!settled) {
+            settled = true;
             resolvePromise(val);
+          }
+        };
+        const reject = (err: Error) => {
+          if (!settled) {
+            settled = true;
+            rejectPromise(err);
           }
         };
 
@@ -150,10 +146,7 @@ export function registerGrepTool(pi: ExtensionAPI): void {
         let stderrData = "";
 
         child.on("error", (err: any) => {
-          resolve({
-            content: [{ type: "text", text: `Error spawning ripgrep: ${err.message}` }],
-            details: { error: err.message },
-          });
+          reject(new Error(`Error spawning ripgrep: ${err.message}`));
         });
 
         child.stderr.on("data", (chunk) => {
@@ -203,7 +196,20 @@ export function registerGrepTool(pi: ExtensionAPI): void {
                 pendingContext.get(filePath)!.push(record.data.line_number);
               }
             } else if (record.type === "end") {
-              // Parse end record: stats / status
+              const filePath = decodeField(record.data.path);
+              if (filePath && pendingContext.has(filePath)) {
+                const pending = pendingContext.get(filePath)!;
+                if (pending.length > 0) {
+                  if (!fileLines.has(filePath)) {
+                    fileLines.set(filePath, new Set<number>());
+                  }
+                  const linesSet = fileLines.get(filePath)!;
+                  for (const lineNo of pending) {
+                    linesSet.add(lineNo);
+                  }
+                  pendingContext.set(filePath, []);
+                }
+              }
             }
           } catch (e) {
             // Ignore JSON parse errors
@@ -220,17 +226,15 @@ export function registerGrepTool(pi: ExtensionAPI): void {
             return;
           }
           const errMsg = stderrData.trim() || `ripgrep exited with code ${code} (signal: ${signal})`;
-          resolve({
-            content: [{ type: "text", text: `Grep error: ${errMsg}` }],
-            details: { code, signal, error: errMsg },
-          });
+          reject(new Error(`Grep error: ${errMsg}`));
         });
 
         function formatResults() {
           const results: string[] = [];
           for (const [filePath, linesSet] of fileLines) {
             try {
-              const text = readTextFile(filePath);
+              const absPath = pathResolve(_ctx.cwd, filePath);
+              const text = readTextFile(absPath);
               const lines_arr = text.split("\n");
               if (lines_arr.length > 0 && lines_arr[lines_arr.length - 1] === "") {
                 lines_arr.pop();
