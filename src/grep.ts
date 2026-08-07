@@ -3,6 +3,8 @@ import { resolve, join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { execSync, spawnSync } from "node:child_process";
 import { mkdirSync, chmodSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { createInterface } from "node:readline";
 import { computeLineHash } from "./hash.js";
 import { loadConfig } from "./config.js";
 import { formatHashline } from "./format.js";
@@ -10,6 +12,15 @@ import { readTextFile } from "./fs.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 let _rgPath: string | null = null;
+
+function decodeField(field: { text?: string; bytes?: string } | undefined): string {
+  if (!field) return "";
+  if (field.text !== undefined) return field.text;
+  if (field.bytes !== undefined) {
+    return Buffer.from(field.bytes, "base64").toString("utf8");
+  }
+  return "";
+}
 
 async function getRgPath(): Promise<string> {
   if (_rgPath) return _rgPath;
@@ -72,6 +83,11 @@ export function registerGrepTool(pi: ExtensionAPI): void {
     label: "grep (hashline)",
     description: "Search files with ripgrep, output in hashline format (LINE#HASH:content). Enable with grep:true in hashline config. Auto-downloads rg if not found on PATH.",
     promptSnippet: "grep: Search file contents using ripgrep, returns hashline-formatted matches.",
+    promptGuidelines: [
+      "Use grep to search for patterns — more efficient than read for finding matches",
+      "Grep output is hashline-formatted: LINE#HASH:content — anchors usable directly in edit tool",
+      "Use context:N for surrounding lines, ignoreCase for case-insensitive search",
+    ],
     parameters: Type.Object({
       pattern: Type.String({ description: "Search pattern (regex)" }),
       path: Type.Optional(Type.String({ description: "Directory or file to search" })),
@@ -83,16 +99,23 @@ export function registerGrepTool(pi: ExtensionAPI): void {
     }),
     executionMode: "sequential",
     async execute(_toolCallId, params, _signal, onUpdate, _ctx) {
-
       const config = loadConfig();
-      const rgPath = await getRgPath();
+      let rgPath: string;
+      try {
+        rgPath = await getRgPath();
+      } catch (err: any) {
+        return {
+          content: [{ type: "text", text: `Error finding/downloading ripgrep: ${err.message}` }],
+          details: { error: err.message },
+        };
+      }
 
       const searchPath = params.path ? resolve(_ctx.cwd, params.path) : _ctx.cwd;
       const limit = params.limit ?? 50;
       const context = params.context ?? 0;
 
       // Build rg command
-      const args = [rgPath, "--line-number", "--no-heading", "--color", "never"];
+      const args = ["--json", "--line-number", "--no-heading", "--color", "never"];
       if (params.ignoreCase) args.push("-i");
       if (params.literal) args.push("-F");
       if (context > 0) {
@@ -107,61 +130,136 @@ export function registerGrepTool(pi: ExtensionAPI): void {
 
       try {
         onUpdate?.({ content: [{ type: "text", text: `grep: ${params.pattern}` }], details: {} });
-        const output = execSync(args.join(" "), { encoding: "utf-8", maxBuffer: 1024 * 1024 });
-        const rgLines = output.trim().split("\n").filter(Boolean);
+      } catch {}
 
-        // Parse rg output: path:line:content
-        const fileResults = new Map<string, { lineNo: number; content: string }[]>();
-
-        for (const line of rgLines) {
-          const match = line.match(/^(.+?):(\d+):(.*)$/);
-          if (!match) continue;
-
-          const [, filePath, lineNoStr, content] = match;
-          const lineNo = parseInt(lineNoStr, 10);
-
-          if (!fileResults.has(filePath)) {
-            fileResults.set(filePath, []);
+      return new Promise<{ content: { type: "text"; text: string }[]; details: any }>((resolvePromise) => {
+        let resolved = false;
+        const resolve = (val: any) => {
+          if (!resolved) {
+            resolved = true;
+            resolvePromise(val);
           }
-          fileResults.get(filePath)!.push({ lineNo, content });
-        }
-
-        // Format hits with hashline
-        const results: string[] = [];
-        for (const [filePath, hits] of fileResults) {
-          try {
-            const text = readTextFile(filePath);
-            const lines_arr = text.split("\n");
-
-            const minLine = Math.max(1, hits[0].lineNo - context);
-            const maxLine = Math.min(lines_arr.length, hits[hits.length - 1].lineNo + context);
-
-            const hashes = lines_arr.map((_, i) => computeLineHash(lines_arr, i, config.hashLength));
-
-            const fileBlock: string[] = [`[${filePath}]`];
-            for (let i = minLine - 1; i < maxLine; i++) {
-              fileBlock.push(formatHashline(i + 1, hashes[i], lines_arr[i]));
-            }
-            results.push(fileBlock.join("\n"));
-          } catch {
-            results.push(`[${filePath}] (binary or unreadable)`);
-          }
-        }
-
-        return {
-          content: [{ type: "text", text: results.join("\n\n") || "No matches found." }],
-          details: {},
         };
-      } catch (err: any) {
-        // rg returns non-zero for "no matches" — that's not an error
-        if (err.status === 1) {
+
+        const child = spawn(rgPath, args, { cwd: _ctx.cwd });
+
+        const fileLines = new Map<string, Set<number>>();
+        const pendingContext = new Map<string, number[]>();
+        let matchCount = 0;
+        let limitReached = false;
+        let stderrData = "";
+
+        child.on("error", (err: any) => {
+          resolve({
+            content: [{ type: "text", text: `Error spawning ripgrep: ${err.message}` }],
+            details: { error: err.message },
+          });
+        });
+
+        child.stderr.on("data", (chunk) => {
+          stderrData += chunk.toString();
+        });
+
+        // Use readline to parse stdout line by line
+        const rl = createInterface({
+          input: child.stdout,
+          crlfDelay: Infinity,
+        });
+
+        rl.on("line", (line) => {
+          if (limitReached) return;
+          try {
+            const record = JSON.parse(line);
+            if (record.type === "match") {
+              const filePath = decodeField(record.data.path);
+              if (filePath) {
+                if (!fileLines.has(filePath)) {
+                  fileLines.set(filePath, new Set<number>());
+                }
+                const linesSet = fileLines.get(filePath)!;
+                linesSet.add(record.data.line_number);
+
+                const pending = pendingContext.get(filePath);
+                if (pending) {
+                  for (const lineNo of pending) {
+                    linesSet.add(lineNo);
+                  }
+                  pendingContext.set(filePath, []);
+                }
+
+                matchCount++;
+                if (matchCount >= limit) {
+                  limitReached = true;
+                  rl.close();
+                  child.kill();
+                }
+              }
+            } else if (record.type === "context") {
+              const filePath = decodeField(record.data.path);
+              if (filePath) {
+                if (!pendingContext.has(filePath)) {
+                  pendingContext.set(filePath, []);
+                }
+                pendingContext.get(filePath)!.push(record.data.line_number);
+              }
+            } else if (record.type === "end") {
+              // Parse end record: stats / status
+            }
+          } catch (e) {
+            // Ignore JSON parse errors
+          }
+        });
+
+        child.on("close", (code, signal) => {
+          if (limitReached) {
+            resolve(formatResults());
+            return;
+          }
+          if (code === 0 || code === 1) {
+            resolve(formatResults());
+            return;
+          }
+          const errMsg = stderrData.trim() || `ripgrep exited with code ${code} (signal: ${signal})`;
+          resolve({
+            content: [{ type: "text", text: `Grep error: ${errMsg}` }],
+            details: { code, signal, error: errMsg },
+          });
+        });
+
+        function formatResults() {
+          const results: string[] = [];
+          for (const [filePath, linesSet] of fileLines) {
+            try {
+              const text = readTextFile(filePath);
+              const lines_arr = text.split("\n");
+              if (lines_arr.length > 0 && lines_arr[lines_arr.length - 1] === "") {
+                lines_arr.pop();
+              }
+              const hashes = lines_arr.map((_, i) => computeLineHash(lines_arr, i, config.hashLength));
+              const sortedLines = Array.from(linesSet).sort((a, b) => a - b);
+              const fileBlock: string[] = [`[${filePath}]`];
+              let lastLineNo = -1;
+              for (const lineNo of sortedLines) {
+                if (lineNo > lines_arr.length) continue;
+                if (lastLineNo !== -1 && lineNo > lastLineNo + 1) {
+                  fileBlock.push("  ...");
+                }
+                fileBlock.push(formatHashline(lineNo, hashes[lineNo - 1], lines_arr[lineNo - 1]));
+                lastLineNo = lineNo;
+              }
+              results.push(fileBlock.join("\n"));
+            } catch {
+              results.push(`[${filePath}] (binary or unreadable)`);
+            }
+          }
+
+          const outputText = results.join("\n\n") || "No matches found.";
           return {
-            content: [{ type: "text", text: `No matches for pattern: ${params.pattern}` }],
+            content: [{ type: "text", text: outputText }],
             details: {},
           };
         }
-        throw err;
-      }
+      });
     },
   });
 }
