@@ -14,17 +14,23 @@ const MAX_LINES = 400;
 const MAX_BYTES = 32768;
 
 export function registerReadTool(pi: ExtensionAPI): void {
+  const config = loadConfig();
+  const promptGuidelines = [
+    "Use read to examine files - each line shows as LINE#HASH:content",
+    "Include the hash prefix (LINE#HASH:) when referencing lines in edit tool",
+    "Use raw:true to read without hashline formatting",
+    "Use offset/limit for large files to keep output focused",
+  ];
+  if (config.grep) {
+    promptGuidelines.push("For locating specific strings/patterns/definitions, use grep first — it returns hashline anchors directly");
+  }
+
   pi.registerTool({
     name: "read",
     label: "read (hashline)",
     description: "Read files with hashline anchors. Each line prefixed LINE#HASH:content. Use raw:true for plain output. Raw output capped at 400 lines or 32 KiB by default; use offset/limit to continue.",
     promptSnippet: "read: Read files with hashline anchors (LINE#HASH:content). Use raw:true for plain text.",
-    promptGuidelines: [
-      "Use read to examine files - each line shows as LINE#HASH:content",
-      "Include the hash prefix (LINE#HASH:) when referencing lines in edit tool",
-      "Use raw:true to read without hashline formatting",
-      "Use offset/limit for large files to keep output focused",
-    ],
+    promptGuidelines,
     parameters: Type.Object({
       path: Type.String({ description: "Path to the file to read" }),
       offset: Type.Optional(Type.Integer({ description: "Starting line number (1-indexed)", minimum: 1 })),
