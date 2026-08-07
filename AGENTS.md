@@ -89,6 +89,7 @@ When the user requests a durable behavior change, record it here or in the relev
 - **2026-07-27** — Bug fix: `convertReplaceTextEdits()` off-by-one `startLine` (removed `+ 1`). `.split('\n').length` already returns 1-indexed line.
 - **2026-07-27** — Bug fix: `convertReplaceTextEdits()` section overwrite when multiple edits target same file. Merge into existing Map entry instead of overwrite.
 - **2026-08-07** — grep tool upgrade (openspec/grep-tool-upgrade): NDJSON streaming via spawn+readline (`rg --json`), bytes base64 fallback for invalid UTF-8, limit = per-file `--max-count` + global in-stream counter with child kill, errors throw (spawn, exit 2+), promptGuidelines nudging (grep over read for search, anchors usable in edit). Cross-nudge in read.ts/edit.ts gated on config.grep. Test suite: tests/grep.test.ts (node:test + tsx devDep), `npm test` script.
+- **2026-08-07** — Known coupling: NIBBLE_STR duplicated in hash.ts + parser.ts; format.ts/edit.ts hardcode `[A-Z]+`. Changing the alphabet requires updating 4 files (see src/AGENTS.md).
 
 ## Child DOX Index
 

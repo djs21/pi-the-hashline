@@ -15,6 +15,7 @@ Hashline-anchored read/edit/grep tools for pi coding-agent. Replaces pi's built-
 - **parser.ts** — State-machine DSL parser: tokenizer → parseDiff → Section[] with optional BLK resolution
 - **config.ts** — Loads ~/.pi/agent/hashline.json. Keys: hashLength (2-4), grep (bool), replaceText (bool, default true)
 - **hash.ts** — Context-based FNV-1a 32-bit: computeLineHash(prev + "\0" + curr + "\0" + next), `>>> 0` unsigned. NIBBLE_STR alphabet (ZPMQVRWSNKTXJBYH, 16 chars, no vowels/hex). Synchronous, zero deps (replaced xxHash32 WASM 2026-07-30)
+- **KNOWN COUPLING (NIBBLE_STR)** — `NIBBLE_STR` constant is DUPLICATED in hash.ts:10 AND parser.ts:9 (no import between them). parser.ts builds its regex dynamically from the constant; format.ts:31 parseHashline and edit.ts:311 diff-coloring hardcode `[A-Z]+`. Today all-uppercase alphabet keeps them consistent BY COINCIDENCE. DO NOT change the alphabet (add digits/letters) without updating ALL FOUR: hash.ts, parser.ts, format.ts, edit.ts. A drift causes silent anchor mismatch (edit targets wrong line, no error).
 - **apply.ts** — Applies edit ops to file content. Bottom-up sorting for line-number stability
 - **block-resolver.ts** — Brace-block resolution for SWAP.BLK/DEL.BLK/INS.BLK.POST ops
 - **recovery.ts** — 3-way merge stale-anchor recovery against historical LRU snapshots
