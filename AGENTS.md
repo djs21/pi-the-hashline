@@ -85,18 +85,23 @@ When the user requests a durable behavior change, record it here or in the relev
 - **2026-07-28** — EDIT tool renderResult: colorized diff per prefix (toolDiffAdded/Removed/Context), 10-line preview + Ctrl+O expand, details metadata, error/warning/noop theme colors. Pure display change; no edit logic.
 - **2026-07-28** — EDIT tool background box: set `renderShell: "default"` so framework wraps output in Box with green/red/yellow background (matches READ behavior).
 - **2026-07-28** — Bug fix: EDIT tool errors now `throw` instead of `return { isError: true }`. Agent loop (agent-core/dist/agent-loop.js) only sets `isError=true` when execute throws, ignoring result.isError. All 5 validation error paths + 2 runtime error paths now throw for proper red TUI background.
-- **2026-07-27** — Hashline edit tool uses LINE#HASH: anchors with NIBBLE_STR alphabet, context-based xxHash32
+- **2026-07-27** — Hashline edit tool uses LINE#HASH: anchors with NIBBLE_STR alphabet, context-based FNV-1a (xxHash32 WASM replaced 2026-07-30)
 - **2026-07-27** — Bug fix: `convertReplaceTextEdits()` off-by-one `startLine` (removed `+ 1`). `.split('\n').length` already returns 1-indexed line.
 - **2026-07-27** — Bug fix: `convertReplaceTextEdits()` section overwrite when multiple edits target same file. Merge into existing Map entry instead of overwrite.
+- **2026-08-07** — grep tool upgrade (openspec/grep-tool-upgrade): NDJSON streaming via spawn+readline (`rg --json`), bytes base64 fallback for invalid UTF-8, limit = per-file `--max-count` + global in-stream counter with child kill, errors throw (spawn, exit 2+), promptGuidelines nudging (grep over read for search, anchors usable in edit). Cross-nudge in read.ts/edit.ts gated on config.grep. Test suite: tests/grep.test.ts (node:test + tsx devDep), `npm test` script.
 
 ## Child DOX Index
 
 - **src/** — extension source code: hashline read/edit/grep tools, DSL parser, config, hashing, recovery
+- **tests/** — test suite for extension tools (node:test + tsx). See [tests/AGENTS.md](./tests/AGENTS.md)
 - **prompts/** — prompt guideline files (NOT currently loaded by extension — dead files)
 - **.pi/** — plans, context files, and plan artifacts (agent working directory). See `.pi/plans/` for per-feature plan/review/report directories.
 
 ### src/
 Owns all tool implementations and pipeline logic. See [src/AGENTS.md](./src/AGENTS.md)
+
+### tests/
+Owns test suite for extension tools (node:test + tsx). See [tests/AGENTS.md](./tests/AGENTS.md)
 
 ### prompts/
 Contains edit.md and read.md prompt descriptions. Currently unused. See [prompts/AGENTS.md](./prompts/AGENTS.md)
