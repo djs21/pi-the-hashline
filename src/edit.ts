@@ -47,6 +47,15 @@ export function registerEditTool(pi: ExtensionAPI): void {
     renderShell: "default",
     executionMode: "sequential",
     prepareArguments(args: any) {
+      // Rescue stringified edits from models that serialize array as JSON string
+      if (typeof args.edits === "string") {
+        try {
+          const parsed = JSON.parse(args.edits);
+          if (Array.isArray(parsed)) {
+            args.edits = parsed;
+          }
+        } catch {}
+      }
       // Normalize old-style { diff } to top-level diff for backward compat
       if (args.edits && Array.isArray(args.edits)) {
         for (const edit of args.edits) {
