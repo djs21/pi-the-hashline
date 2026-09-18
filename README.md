@@ -6,7 +6,7 @@ Overrides Pi's built-in `read` and `edit` tools with hashline-anchored replaceme
 
 ## Features
 
-- **Hashline read** — `LINE#HASH:content` per line with context-sensitive xxHash32 hashes
+- **Hashline read** — `LINE#HASH:content` per line with context-sensitive FNV-1a 32-bit hashes
 - **TUI preview** — read & edit show 10-line preview (Ctrl+O expands)
 - **Hash-validated edit** — SWAP/DEL/INS/INS.BLK ops verified against live hashes
 - **Colored diff** — edit diffs colorized: removed lines, added lines, context lines, warnings, errors each in distinct theme colors

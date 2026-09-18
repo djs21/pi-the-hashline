@@ -10,7 +10,7 @@ A Pi coding-agent extension that overrides native `read`/`edit` tools with hashl
 |------|-------------|
 | **RimuruW** (pi-hashline-edit) | NIBBLE_STR hash alphabet, configurable hash length (2-4), context-based hashing (prev+curr+next), inline `LINE#HASH:content` format, config file, file-kind detection, grep tool, clean prompt system |
 | **YanwuZeng** (pi-hashline) | State-machine DSL parser (SWAP/DEL/INS/INS.HEAD/INS.TAIL/.BLK ops), brace-matching block resolver, self-healing boundary repair, landing-shift for INS.POST, CRLF/BOM preservation, rich error display, multi-file diff sections, all-or-nothing commits |
-| **Both** | xxHash32, 3-way merge stale-anchor recovery, snapshot version walk, noop-loop guard, LRU snapshot store |
+| **Both** | FNV-1a 32-bit (pure TS), 3-way merge stale-anchor recovery, snapshot version walk, noop-loop guard, LRU snapshot store |
 
 ## Architecture
 
@@ -18,7 +18,7 @@ A Pi coding-agent extension that overrides native `read`/`edit` tools with hashl
 index.ts                    ← Extension entry: register read/edit/grep tools
 src/
   config.ts                 ← ~/.pi/agent/hashline.json loader
-  hash.ts                   ← xxh32 + NIBBLE_STR context-based hashing
+  hash.ts                   ← fnv-1a (pure TS) + NIBBLE_STR context-based hashing
   format.ts                 ← Hashline format/parse utilities
   tokenizer.ts              ← Edit DSL line-by-line tokenizer (YanwuZeng-inspired)
   parser.ts                 ← Token stream → Edit[] state machine
@@ -40,9 +40,9 @@ prompts/
 ## Key Design Decisions
 
 ### 1 — Hash Algorithm
-- **Algorithm**: xxHash32
+- **Algorithm**: FNV-1a 32-bit (pure TypeScript, zero WASM/native deps)
 - **Alphabet**: NIBBLE_STR `ZPMQVRWSNKTXJBYH` (16 chars, no hex digits except B, no vowels, no confusable D/G/I/L/O)
-- **Context**: `xxh32(prev + "\0" + curr + "\0" + next)` — hash depends on neighbors
+- **Context**: `fnvHash(prev + "\0" + curr + "\0" + next)` — hash depends on neighbors
 - **Length**: configurable 2-4 chars, default 2
 - **Normalization**: strip trailing `[ \t\r]` before hashing
 
